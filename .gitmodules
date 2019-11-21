@@ -1,0 +1,4 @@
+[submodule "libmacro"]
+	path = libmacro
+	url = https://github.com/newpsoft/libmacro.git
+	branch = devel
