@@ -5,6 +5,9 @@
 #include <regex>
 #include <thread>
 
+#include <signal.h>
+#include <unistd.h>
+
 #ifdef _WIN32
 #else
 #include "mcr/intercept/linux/p_intercept.h"
@@ -23,23 +26,46 @@
 	#define INPUT_DIR "/dev/input"
 #endif
 
-static mcr::Libmacro *libmacroPt;
+static mcr::Libmacro *libmacroPt = nullptr;
+/* Can be improved with a condition variable */
+static bool endProgram = false;
 
+static bool exists(const char *filename)
+{
+	return !std::ifstream(filename).fail();
+}
+static bool exists(const std::string &filename)
+{
+	return !std::ifstream(filename).fail();
+}
 static bool setInterceptList();
 static bool setInterceptList(int argc, char *argv[]);
 
+static void sig_handler(int signo)
+{
+	endProgram = true;
+}
+
 int main(int argc, char *argv[])
 {
+	int i;
+	for (i = SIGHUP; i <= SIGTERM; i++) {
+		signal(i, sig_handler);
+	}
+
 	libmacroPt = new mcr::Libmacro(true);
 
-	/* Set to true to see all signals (keyboard keys) blocked.  Remember press
+	/* Set to true and all signals (keyboard keys) blocked.  Remember press
 	 * Q to exit. */
 	mcr_intercept_set_blockable(libmacroPt->ptr(), false);
 	/* Detect intercept devices, or set from arguments */
-	setInterceptList(argc, argv);
+//	setInterceptList(argc, argv);
 
 	mcr_intercept_set_enabled(libmacroPt->ptr(), true);
-	sleep(3);
+
+	while (!endProgram) {
+		sleep(2);
+	}
 
 	/* Will cause an error if either intercept or Libmacro is still enabled
 	 * when Libmacro is deleted. */
@@ -49,8 +75,8 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
+/* Line starts with "A: " where A is a letter */
 static std::regex regexAssignment("^\\s*\\w+[:=]\\s*", std::regex::icase);
-static std::regex regexInput("^" INPUT_DIR "/");
 
 static bool setInterceptList(const std::vector<std::string> &list)
 {
@@ -59,6 +85,12 @@ static bool setInterceptList(const std::vector<std::string> &list)
 		dataList.push_back(iter.c_str());
 	}
 	return !mcr_intercept_set_grabs(libmacroPt->ptr(), dataList.data(), dataList.size());
+}
+
+static void lineHandler(const std::string &line)
+{
+	static bool useDeviceFlag = false;
+	std::regex_replace(line, regexAssignment, "");
 }
 
 static bool setInterceptList()
@@ -73,9 +105,9 @@ static bool setInterceptList()
 	if (!f.is_open())
 		return false;
 	while (std::getline(f, line)) {
-
+		lineHandler(line);
 	}
-	f.close();
+//	f.close();
 	return true;
 #endif
 }
@@ -90,12 +122,13 @@ static bool setInterceptList(int argc, char *argv[])
 #else
 	std::vector<std::string> list;
 	for (i = 1; i < argc; i++) {
-		if (std::regex_match(argv[i], regexInput)) {
+		if (exists(argv[i])) {
 			list.push_back(argv[i]);
-		} else {
+		} else if (exists(std::string(INPUT_DIR "/") + argv[i])) {
 			list.push_back(std::string(INPUT_DIR "/") + argv[i]);
 		}
 	}
+	setInterceptList(list);
 	return true;
 #endif
 }
