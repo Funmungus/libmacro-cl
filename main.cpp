@@ -33,7 +33,12 @@
 	const static int endKey = KEY_Q;
 #endif
 
+//#define ONLY_HEAR_KEYS
+#define MANGLE_YOUR_KEYS
+
 static mcr::Libmacro *libmacroPt = nullptr;
+static mcr::Signal *mangleSignal = nullptr;
+static mcr_Key *mangleKey = nullptr;
 /* Can be improved with a condition variable */
 static bool endProgram = false;
 
@@ -74,18 +79,29 @@ int main(int argc, char *argv[])
 			  << std::endl;
 
 	libmacroPt = new mcr::Libmacro(true);
+	mangleSignal = new mcr::Signal(libmacroPt->iKey());
+	/* Confusing?  This will all be simplified in the future. */
+	mcr::SignalRef(libmacroPt, &mangleSignal->signal).mkdata();
+	mangleKey = mcr_Key_data(&mangleSignal->signal);
 
 	/* Listen for signals. There will be a C++ wrapper for this. */
-	mcr_Dispatcher_add_generic(libmacroPt->ptr(), nullptr, nullptr, receive);
+#ifdef ONLY_HEAR_KEYS
 	/* The following to only listen to key signals. */
-//	mcr_Signal siggy;
-//	mcr_Signal_init(&siggy);
-//	siggy.isignal = libmacroPt->iKey();
-//	mcr_Dispatcher_add(libmacroPt->ptr(), &siggy, nullptr, receive);
+	mcr_Signal siggy;
+	mcr_Signal_init(&siggy);
+	siggy.isignal = libmacroPt->iKey();
+	mcr_Dispatcher_add(libmacroPt->ptr(), &siggy, nullptr, receive);
+#else
+	mcr_Dispatcher_add_generic(libmacroPt->ptr(), nullptr, nullptr, receive);
+#endif
 
 	/* Set to true and all signals (keyboard keys) will be blocked.
 	 * Remember press Q to exit. */
+#ifdef MANGLE_YOUR_KEYS
+	mcr_intercept_set_blockable(libmacroPt->ptr(), true);
+#else
 	mcr_intercept_set_blockable(libmacroPt->ptr(), false);
+#endif
 	/* Detect intercept devices, or set from arguments */
 	setInterceptList(argc, argv);
 
@@ -99,6 +115,7 @@ int main(int argc, char *argv[])
 	 * when Libmacro is deleted. */
 	mcr_intercept_set_enabled(libmacroPt->ptr(), false);
 	libmacroPt->setEnabled(false);
+	delete mangleSignal;
 	delete libmacroPt;
 	return 0;
 }
@@ -136,7 +153,7 @@ static void lineHandler(const std::string &line,
 		return;
 	}
 	/* H: HANDLERS=, this is the goods. */
-	if (std::regex_search(line, regexHandler)) {
+	if (useDeviceFlag && std::regex_search(line, regexHandler)) {
 		std::set<std::string> handlerSet;
 		/* Remove handlers=, everything else are the events */
 		std::string eventLine = std::regex_replace(line, regexHandler, "");
@@ -244,6 +261,12 @@ static bool receive(void *, struct mcr_Signal * dispatchSignal,
 				std::cout << "Ending key has been found.  Closing program." << std::endl;
 				endProgram = true;
 			}
+#ifdef MANGLE_YOUR_KEYS
+			mangleSignal->signal.is_dispatch = false;
+			mangleKey->key = keyPt->key + 1;
+			mangleKey->apply = keyPt->apply;
+			mcr_send(libmacroPt->ptr(), &mangleSignal->signal);
+#endif
 		} else {
 			std::cout << "Oops, key instance has no data." << std::endl;
 		}
