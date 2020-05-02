@@ -13,6 +13,10 @@ project(libmacro-cl LANGUAGES CXX)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 # Include files in libmacro project
 include_directories(libmacro)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)

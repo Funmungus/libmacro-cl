@@ -4,9 +4,13 @@
 #include <iostream>
 #include <regex>
 #include <set>
+#include <sstream>
 #include <thread>
 
 #ifdef _WIN32
+	#define sleep(millis) Sleep(millis)
+
+	#include "mcr/intercept/windows/p_intercept.h"
 #else
 	#include <linux/input.h>
 	#include <signal.h>
@@ -29,12 +33,13 @@
 #endif
 
 #ifdef _WIN32
+	const static int endKey =  'Q';
 #else
 	const static int endKey = KEY_Q;
 #endif
 
-//#define ONLY_HEAR_KEYS
-#define MANGLE_YOUR_KEYS
+#define ONLY_HEAR_KEYS
+//#define MANGLE_YOUR_KEYS
 
 static mcr::Libmacro *libmacroPt = nullptr;
 static mcr::Signal *mangleSignal = nullptr;
@@ -42,6 +47,7 @@ static mcr_Key *mangleKey = nullptr;
 /* Can be improved with a condition variable */
 static bool endProgram = false;
 
+#ifdef linux
 static bool exists(const char *filename)
 {
 	return !std::ifstream(filename).fail();
@@ -50,6 +56,7 @@ static bool exists(const std::string &filename)
 {
 	return !std::ifstream(filename).fail();
 }
+#endif
 static bool setInterceptList();
 static bool setInterceptList(int argc, char *argv[]);
 
@@ -58,7 +65,7 @@ static bool setInterceptList(int argc, char *argv[]);
 static bool receive(void *receiver, struct mcr_Signal * dispatchSignal,
 					unsigned int mods);
 
-#ifndef _WIN32
+#ifdef linux
 static void sig_handler(int)
 {
 	endProgram = true;
@@ -67,7 +74,7 @@ static void sig_handler(int)
 
 int main(int argc, char *argv[])
 {
-#ifndef _WIN32
+#ifdef linux
 	int i;
 	for (i = SIGHUP; i <= SIGTERM; i++) {
 		signal(i, sig_handler);
@@ -125,6 +132,7 @@ static std::regex regexEvent("^event", std::regex::icase);
 static std::regex regexHandler("^\\s*H:\\s*HANDLER[A-Z]*=", std::regex::icase);
 static std::regex regexBusVirtual("^\\s*I:\\s*BUS=0*6\\s", std::regex::icase);
 
+#ifdef linux
 static bool setInterceptList(const std::set<std::string> &list)
 {
 	std::cout << "Set intercept list: ";
@@ -137,7 +145,9 @@ static bool setInterceptList(const std::set<std::string> &list)
 	return !mcr_intercept_set_grabs(libmacroPt->ptr(), dataList.data(),
 									dataList.size());
 }
+#endif
 
+#ifdef linux
 static void lineHandler(const std::string &line,
 						std::set<std::string> &eventSet)
 {
@@ -177,10 +187,13 @@ static void lineHandler(const std::string &line,
 		}
 	}
 }
+#endif
 
 static bool setInterceptList()
 {
 #ifdef _WIN32
+	mcr_intercept_key_set_enabled(libmacroPt->ptr(), true);
+	mcr_intercept_move_set_enabled(libmacroPt->ptr(), true);
 	return true;
 #else
 	std::ifstream f(DEV_FILE);
@@ -211,7 +224,9 @@ static bool setInterceptList(int argc, char *argv[])
 	if (argc <= 1)
 		return setInterceptList();
 #ifdef _WIN32
-	return true;
+	UNUSED(i);
+	UNUSED(argv);
+	return setInterceptList();
 #else
 	std::set<std::string> list;
 	for (i = 1; i < argc; i++) {
